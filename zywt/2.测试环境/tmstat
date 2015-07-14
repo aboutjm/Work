@@ -1,0 +1,230 @@
+#!/bin/bash
+#2014年8月8日  张攀李斌  系统监控脚本(由程序调用)
+
+#定义mem使用率的函数
+#按百分比显示使用率
+export LANG=en_US.UTF-8
+mem() {
+#   memrate=`free -m |grep Mem |awk '{print $2,$4+$6+$7}'|awk '{print $1,$1-$2}'| awk '{OFMT="%.1f";print $2/$1*100}'`
+    mems=`free -m |grep Mem |awk '{print $2}'`
+    memu=`free -m |grep Mem |awk '{print $3}'`
+   echo "MEMS $mems"
+   echo "MEMU $memu"
+    }
+
+#定义cpu使用率的函数
+#按百分比显示使用率
+
+cpu() {
+#  a=`echo $(($RANDOM%10000))`
+#  b=`echo $(($RANDOM%10000))`
+  touch /tmp/.cpu1 /tmp/.cpu2
+  cpuf1=/tmp/.cpu1
+  cpuf2=/tmp/.cpu2
+  cat /proc/stat |grep cpu > $cpuf1
+  sleep 1
+  cat /proc/stat |grep cpu > $cpuf2
+  cpunumber=`cat /proc/stat |grep cpu |wc -l |awk '{print $1-1}'`
+  echo "CPUn $cpunumber"
+  cpunumber=`cat /proc/stat |grep cpu |wc -l |awk '{print $1}'`
+    for ((i=1;i<=$cpunumber;i++))
+    do
+      totala=`cat $cpuf1 | sed -n "$i p"  | awk '{print $2+$3+$4+$5+$6+$7+$8}'`
+      idlea=`cat  $cpuf1 | sed -n "$i p"  | awk '{print $5}'`
+      totalb=`cat $cpuf2 | sed -n "$i p"  | awk '{print $2+$3+$4+$5+$6+$7+$8}'`
+      idleb=`cat  $cpuf2 | sed -n "$i p"  | awk '{print $5}'`
+      total=`echo "$totalb-$totala" |bc`
+      idle=`echo "$idleb-$idlea" |bc`
+      usage=`echo "$idle/$total*100"|bc -l `
+      rate=`echo "100-$usage "|bc -l`
+      userate=`echo "scale=1;$rate/1"|bc`
+      number=`echo "$i-1"|bc`
+      if [ $number -eq 0 ] ; then
+        echo "CPU  $userate"
+      else
+        number=`echo "$number-1"|bc`
+        echo "CPU$number $userate" 
+      fi
+      done
+     }
+
+#定义交换分区使用率的函数
+#按百分比显示使用率
+
+swap() {  
+    
+      SWAPS=`free -m |grep Swap |awk '{print $2}'`
+      SWAPU=`free -m |grep Swap |awk '{print $3}'`
+      echo "SWAPS $SWAPS"
+      echo "SWAPU $SWAPU"
+     # free -m |grep Swap |awk '{print $3}' |egrep [1-9] &>/dev/null 
+     # if [ $? -eq 0 ] ; then
+     #    swaprate=`free -m |grep Swap | awk '{OFMT="%.1f";print $3/$2*100}' 2>/dev/null`
+     #    echo "SWAP $swaprate"
+     # else
+     #    echo "SWAP 0"
+     # fi
+      }
+
+
+#定义java进程使用率的函数
+#按百分比显示使用率
+
+java() {
+    javarate=`ps aux |grep java |awk '{print $4}'|awk '{print total+=$1}'|tail -n 1` 
+    echo "JAVA $javarate"
+     }
+
+
+#定义网卡使用率的函数
+#以每秒KB显示数据
+#只监控插上网线的网卡数据
+networkcard() {
+  
+
+      netfile1=/tmp/.net1
+      netfile2=/tmp/.net2
+    for interface in `ip a|grep "pfifo_fast state UP"|awk '{ print $2 }'|sed -e 's/://g'|sort -u`
+    do 
+       cat /proc/net/dev |egrep -v 'Inter|face'  |grep $interface | awk -F: '{print $1" "$2}' | awk '{print $1"   "$2"    "$10}' |column -t  > $netfile1
+       sleep 1
+       cat /proc/net/dev |egrep -v 'Inter|face'  |grep $interface | awk -F: '{print $1" "$2}' | awk '{print $1"   "$2"    "$10}' |column -t  > $netfile2
+       number=`wc -l $netfile1 |awk '{print $1}'`
+       echo "FEn $interface"
+     for ((i=1;i<=$number;i++))
+     do
+        A=`cat $netfile1 |head -n $i |tail -n 1 |awk '{print $2}'`
+        B=`cat $netfile2 |head -n $i |tail -n 1 |awk '{print $2}'`
+        D=`cat $netfile2 |head -n $i |tail -n 1 |awk '{print $1}'`
+        H1=`echo "($B-$A)*8/1000" |bc`
+        E=`cat $netfile1 |head -n $i |tail -n 1 |awk '{print $3}'`
+        F=`cat $netfile2 |head -n $i |tail -n 1 |awk '{print $3}'`
+        H=`echo "($F-$E)*8/1000" |bc`
+        nu=`echo $interface |awk -Fh '{print $2}' `
+        echo "FE$nu-rx $H1"
+        echo "FE$nu-tx $H"
+     done
+  done
+               }
+
+#定义磁盘读取写入的函数
+#单位以KB显示
+
+diskrw() {
+       
+        
+        diskr=`cat /tmp/.diskio|tail |tail -n 3|awk '{ print $6 }'|grep -v "rkB/s"|cut -d "." -f1|grep "[0-9]"`
+        diskw=`cat /tmp/.diskio|tail |tail -n 3|awk '{ print $7 }'|grep -v "wkB/s"|cut -d "." -f1|grep "[0-9]"`
+        echo "DISK-r $diskr"
+        echo "DISK-w $diskw"
+	#disk=`du -h /tmp/.diskio |awk '{ print $1 }'`
+	#if [ $disk > 5M ] 
+	#then
+	#cat /dev/null >/tmp/.diskio
+	#fi
+     }
+   
+hostnames () {
+            hostname=`cat /etc/sysconfig/network|grep "HOSTNAME"|awk -F= '{ print $2 }'`
+            echo "HOSTNAME:$hostname"
+}
+
+router () {
+         num=`route|grep default|awk '{ print $2 }'|wc -l`
+   if [ $num -gt 1 ]
+   then
+      for ((n=0;n<$(($num+1));n++))
+            do
+            route=`route|grep default|awk '{ print $2 }'|sed -n "$n p"`
+            echo "GATEWAY$n:$route"
+      done
+  else
+         if [ $num -eq 0 ]
+         then
+         echo "Default route  is not configured"
+         else
+  echo "GATEWAY:`route|grep default|awk '{ print $2 }'`"
+         fi
+      fi  
+}
+
+dns () {
+      dnum=`cat /etc/resolv.conf |grep -v "^#"|awk '{ print $2 }'|wc -l`
+      if [ $dnum -gt 1 ]
+         then
+            for (( m=1;m<$(($dnum+1));m++ ))
+            do
+            dns=`cat /etc/resolv.conf |grep -v "^#"|awk '{ print $2 }'|sed -n "$m p"`
+            echo "DNS$m:$dns"
+            done
+        else
+         if [ $dnum -eq 0 ]
+   then
+         echo "DNS is not configured"
+         else
+         echo "DNS:`cat /etc/resolv.conf |grep -v "^#"|awk '{ print $2 }'`"
+         fi
+      fi
+
+}
+
+services () {
+      sshd=`ps -ef|grep sshd|grep -v "grep"|grep -v "pts"|wc -l`
+        if [ $sshd -ge 1 ]
+         then
+         echo "sshd is running"
+        else
+         echo "sshd is not running"
+       fi
+      snmp=`ps -ef|grep snmp|grep -v "grep"|wc -l`
+      if [ $snmp -eq 1 ]
+       then
+       echo "snmp is running"
+      else
+       echo "snmp is not running"
+      fi
+}
+
+utime () {
+     time=` cat /proc/uptime|awk '{ run_days=$1 / 86400;run_hour=($1 % 86400) /3600; run_minute=($1 % 3600) /60;run_second=$1 % 60; printf("%dDs%dHs%dMs%dSs", run_days ,run_hour,run_minute,run_second)}'`
+    echo "$time"
+}
+#调用定义好的函数，提取数据
+  for i in $* ;
+  do
+    case $i in 
+       --cpu )
+         cpu  
+       ;;
+       --mem )
+         mem 
+       ;;
+       --swap)
+         swap  
+       ;;
+       --java)
+         java 
+       ;;
+      --disk)
+       diskrw
+       ;;
+      --if)
+        networkcard 
+       ;;
+      --hostnames)
+       hostnames
+       ;; 
+      --router)
+         router  
+       ;;
+      --dns)
+         dns 
+       ;;
+      --services)
+         services 
+       ;;
+      --utime)
+        utime 
+       ;;
+    esac
+  done
